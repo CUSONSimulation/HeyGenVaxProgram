@@ -1,5 +1,5 @@
 """
-HeyGen Interactive Avatar Simulation - Flu Vaccination Program
+Columbia University School of Nursing - Flu Vaccination Program
 =============================================================
 This application implements a three-phase healthcare simulation with automatic flow:
 1. NOA SANDOVAL (Pre-briefing) - Virtual instructor introduces the simulation
@@ -159,6 +159,13 @@ def get_phase_scripts(phase):
     }
     return scripts.get(phase, [])
 
+# Phase names mapping
+phase_names = {
+    SimulationPhase.PRE_BRIEFING: "Pre-Briefing (Noa)",
+    SimulationPhase.MAIN_SIMULATION: "Main Simulation (Sam)",
+    SimulationPhase.DEBRIEFING: "Debriefing (Noa)"
+}
+
 # Switch avatar based on phase
 def switch_avatar(avatar_key):
     """Switch to a different avatar"""
@@ -182,15 +189,10 @@ with st.sidebar:
                                type="password",
                                help="Your HeyGen API key (or add to Streamlit secrets)")
     
-        st.divider()
+    st.divider()
     
     # Current phase display
     st.subheader("📍 Current Phase")
-    phase_names = {
-        SimulationPhase.PRE_BRIEFING: "Pre-Briefing (Noa)",
-        SimulationPhase.MAIN_SIMULATION: "Main Simulation (Sam)",
-        SimulationPhase.DEBRIEFING: "Debriefing (Noa)"
-    }
     st.info(phase_names[st.session_state.simulation_phase])
     
     # Current avatar info
@@ -211,7 +213,7 @@ with st.sidebar:
         st.markdown("**Noa → SAM (Simulation) → Noa**")
     else:
         st.markdown("**Noa → Sam → NOA (Debrief)**")
-        
+    
     # Automatic progression buttons
     if st.session_state.simulation_started:
         if st.session_state.simulation_phase == SimulationPhase.PRE_BRIEFING:
@@ -260,7 +262,7 @@ with st.sidebar:
                 st.success("Simulation completed successfully!")
     
     st.divider()
-        
+    
     # Progress tracker
     st.subheader("📊 Progress")
     for phase, completed in st.session_state.phase_completed.items():
