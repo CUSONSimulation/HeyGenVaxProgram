@@ -57,14 +57,14 @@ if 'phase_completed' not in st.session_state:
 AVATARS = {
     "noa": {
         "name": "Noa Sandoval",
-        "avatar_id": "June_HR_public",
+        "avatar_id": "Kristin_public_3_20240108",  # Using a known public avatar
         "knowledge_base_id": "96b0ed06f07640459bcac16439103895",
         "role": "Virtual Simulation Instructor",
         "description": "Handles pre-briefing and debriefing"
     },
     "sam": {
         "name": "Sam Richards",
-        "avatar_id": "Shawn_Therapist_public",
+        "avatar_id": "Tyler_public_2_20230808",  # Using a known public avatar
         "knowledge_base_id": "15a0063f43ed4d1c92f5a269dc0b8f9b",
         "role": "Simulation Character",
         "description": "Patient in the Flu Vaccination Program simulation"
@@ -98,6 +98,10 @@ def load_config():
             with open('config.json', 'r') as f:
                 file_config = json.load(f)
                 config['heygen_api_key'] = file_config.get('heygen_api_key', '')
+                
+                # Check if it's still the placeholder
+                if config['heygen_api_key'] == 'YOUR_HEYGEN_API_KEY_HERE':
+                    config['heygen_api_key'] = ''
         except FileNotFoundError:
             config['heygen_api_key'] = ''
     
@@ -115,9 +119,22 @@ def create_streaming_token(api_key):
     try:
         response = requests.post(url, headers=headers)
         if response.status_code == 200:
-            return response.json().get('data', {}).get('token')
+            token_data = response.json()
+            return token_data.get('data', {}).get('token')
         else:
-            st.error(f"Failed to create token: {response.text}")
+            error_msg = f"Failed to create token: Status {response.status_code}"
+            try:
+                error_detail = response.json()
+                error_msg += f" - {error_detail.get('message', str(error_detail))}"
+            except:
+                error_msg += f" - {response.text}"
+            st.error(error_msg)
+            
+            if response.status_code == 401:
+                st.error("⚠️ Invalid API key. Please check your HeyGen API key.")
+            elif response.status_code == 403:
+                st.error("⚠️ API key doesn't have permission for streaming avatars.")
+            
             return None
     except Exception as e:
         st.error(f"Error creating token: {str(e)}")
@@ -150,9 +167,23 @@ def create_streaming_session(api_key, avatar_id, knowledge_base_id=None):
         if response.status_code == 200:
             result = response.json().get('data', {})
             result['token'] = token  # Include token in response
+            
+            # Debug: Show what we got back
+            st.success(f"Session created successfully! Session ID: {result.get('session_id', 'N/A')}")
+            
+            # Ensure all required fields are present
+            if not all(key in result for key in ['session_id', 'access_token', 'url']):
+                st.warning("Session created but some fields are missing. Available fields: " + str(list(result.keys())))
+            
             return result
         else:
-            st.error(f"Failed to create session: {response.text}")
+            error_msg = f"Failed to create session: Status {response.status_code}"
+            try:
+                error_detail = response.json()
+                error_msg += f" - {error_detail.get('message', str(error_detail))}"
+            except:
+                error_msg += f" - {response.text}"
+            st.error(error_msg)
             return None
     except Exception as e:
         st.error(f"Error creating session: {str(e)}")
@@ -290,6 +321,10 @@ with st.sidebar:
                                value='', 
                                type="password",
                                help="Your HeyGen API key (or add to Streamlit secrets)")
+        
+        if not api_key:
+            st.warning("⚠️ Please enter your HeyGen API key above")
+            st.info("Get your API key from: https://app.heygen.com/settings?nav=API")
     
     # Store API key in session state for use in other functions
     if api_key:
@@ -448,8 +483,18 @@ with col1:
         if not st.session_state.simulation_started:
             # Check if API key is configured
             if not api_key:
-                st.warning("⚠️ Please configure your HeyGen API key in the sidebar or add it to Streamlit secrets")
-                st.info("For Streamlit Cloud: Add `heygen_api_key = 'YOUR_KEY'` to your app's secrets")
+                st.warning("⚠️ Please configure your HeyGen API key in the sidebar")
+                st.info("📝 Steps to get started:")
+                st.markdown("""
+                1. **Get your API key**: Visit [HeyGen Settings](https://app.heygen.com/settings?nav=API)
+                2. **Add your key**: Either:
+                   - Enter it in the sidebar text field, OR
+                   - For Streamlit Cloud: Add `heygen_api_key = 'YOUR_KEY'` to your app's secrets
+                3. **Start the simulation**: Click the button below once your key is configured
+                """)
+                
+                # Show button but disabled
+                st.button("🚀 Start Simulation", use_container_width=True, disabled=True)
             else:
                 if st.button("🚀 Start Simulation", use_container_width=True):
                     with st.spinner(f"Initializing {avatar_info['name']}..."):
@@ -476,6 +521,8 @@ with col1:
                                 })
                             
                             st.rerun()
+                        else:
+                            st.error("Failed to create avatar session. Please check your API key and try again.")
         else:
             # Load and inject the custom HTML/JS component
             try:
@@ -492,6 +539,9 @@ with col1:
                 components.html(html_content, height=600)
             except FileNotFoundError:
                 st.error("avatar_component.html file not found. Please ensure all files are in the project directory.")
+            except Exception as e:
+                st.error(f"Error loading avatar component: {str(e)}")
+                st.info("Debug info: Session data keys: " + str(list(session_data.keys()) if session_data else "No session data"))
     
     # Control buttons for phase scripts
     st.divider()
