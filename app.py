@@ -32,13 +32,6 @@ class SimulationPhase(Enum):
     MAIN_SIMULATION = "main_simulation"
     DEBRIEFING = "debriefing"
 
-# Phase names mapping - Using string values for reliability
-phase_names = {
-    "pre_briefing": "Pre-Briefing (Noa)",
-    "main_simulation": "Main Simulation (Sam)",
-    "debriefing": "Debriefing (Noa)"
-}
-
 # Initialize session state
 if 'session_id' not in st.session_state:
     st.session_state.session_id = None
@@ -51,10 +44,11 @@ if 'simulation_started' not in st.session_state:
 if 'current_avatar' not in st.session_state:
     st.session_state.current_avatar = "noa"  # Start with Noa
 if 'phase_completed' not in st.session_state:
+    # Initialize with string keys to avoid enum issues
     st.session_state.phase_completed = {
-        SimulationPhase.PRE_BRIEFING: False,
-        SimulationPhase.MAIN_SIMULATION: False,
-        SimulationPhase.DEBRIEFING: False
+        "pre_briefing": False,
+        "main_simulation": False,
+        "debriefing": False
     }
 
 # Avatar configurations
@@ -73,6 +67,13 @@ AVATARS = {
         "role": "Simulation Character",
         "description": "Patient in the Flu Vaccination Program simulation"
     }
+}
+
+# Phase names mapping
+phase_names = {
+    SimulationPhase.PRE_BRIEFING: "Pre-Briefing (Noa)",
+    SimulationPhase.MAIN_SIMULATION: "Main Simulation (Sam)",
+    SimulationPhase.DEBRIEFING: "Debriefing (Noa)"
 }
 
 # Load configuration
@@ -172,12 +173,20 @@ def switch_avatar(avatar_key):
     st.session_state.current_avatar = avatar_key
     st.session_state.session_id = None  # Reset session for new avatar
 
-# Helper function to get phase name
-def get_phase_name(phase):
-    """Get the display name for a phase"""
+# Get phase completion status
+def is_phase_completed(phase):
+    """Check if a phase is completed"""
     if isinstance(phase, SimulationPhase):
-        return phase_names.get(phase.value, "Unknown Phase")
-    return phase_names.get(str(phase), "Unknown Phase")
+        return st.session_state.phase_completed.get(phase.value, False)
+    return st.session_state.phase_completed.get(str(phase), False)
+
+# Set phase completion status
+def set_phase_completed(phase, completed=True):
+    """Set phase completion status"""
+    if isinstance(phase, SimulationPhase):
+        st.session_state.phase_completed[phase.value] = completed
+    else:
+        st.session_state.phase_completed[str(phase)] = completed
 
 # Sidebar configuration
 with st.sidebar:
@@ -200,7 +209,7 @@ with st.sidebar:
     
     # Current phase display
     st.subheader("📍 Current Phase")
-    st.info(get_phase_name(st.session_state.simulation_phase))
+    st.info(phase_names[st.session_state.simulation_phase])
     
     # Current avatar info
     current_avatar_info = AVATARS[st.session_state.current_avatar]
@@ -226,7 +235,7 @@ with st.sidebar:
         if st.session_state.simulation_phase == SimulationPhase.PRE_BRIEFING:
             if st.button("✅ Pre-Brief Complete - Start Simulation", use_container_width=True, type="primary"):
                 st.session_state.simulation_phase = SimulationPhase.MAIN_SIMULATION
-                st.session_state.phase_completed[SimulationPhase.PRE_BRIEFING] = True
+                set_phase_completed(SimulationPhase.PRE_BRIEFING)
                 switch_avatar("sam")
                 
                 # Queue Sam's initial greeting
@@ -246,7 +255,7 @@ with st.sidebar:
         elif st.session_state.simulation_phase == SimulationPhase.MAIN_SIMULATION:
             if st.button("✅ Simulation Complete - Start Debrief", use_container_width=True, type="primary"):
                 st.session_state.simulation_phase = SimulationPhase.DEBRIEFING
-                st.session_state.phase_completed[SimulationPhase.MAIN_SIMULATION] = True
+                set_phase_completed(SimulationPhase.MAIN_SIMULATION)
                 switch_avatar("noa")
                 
                 # Queue Noa's debrief welcome
@@ -265,18 +274,24 @@ with st.sidebar:
         
         else:  # DEBRIEFING
             if st.button("🎓 Complete Session", use_container_width=True, type="primary"):
-                st.session_state.phase_completed[SimulationPhase.DEBRIEFING] = True
+                set_phase_completed(SimulationPhase.DEBRIEFING)
                 st.success("Simulation completed successfully!")
     
     st.divider()
     
     # Progress tracker
     st.subheader("📊 Progress")
-    for phase, completed in st.session_state.phase_completed.items():
-        if completed:
-            st.success(f"✅ {get_phase_name(phase)}")
+    phases = [
+        (SimulationPhase.PRE_BRIEFING, "Pre-Briefing (Noa)"),
+        (SimulationPhase.MAIN_SIMULATION, "Main Simulation (Sam)"),
+        (SimulationPhase.DEBRIEFING, "Debriefing (Noa)")
+    ]
+    
+    for phase, name in phases:
+        if is_phase_completed(phase):
+            st.success(f"✅ {name}")
         else:
-            st.info(f"⏳ {get_phase_name(phase)}")
+            st.info(f"⏳ {name}")
     
     st.divider()
     
@@ -287,9 +302,9 @@ with st.sidebar:
         st.session_state.session_id = None
         st.session_state.current_avatar = "noa"
         st.session_state.phase_completed = {
-            SimulationPhase.PRE_BRIEFING: False,
-            SimulationPhase.MAIN_SIMULATION: False,
-            SimulationPhase.DEBRIEFING: False
+            "pre_briefing": False,
+            "main_simulation": False,
+            "debriefing": False
         }
         st.rerun()
 
@@ -301,13 +316,15 @@ col_flow1, col_flow2, col_flow3 = st.columns(3)
 with col_flow1:
     if st.session_state.simulation_phase == SimulationPhase.PRE_BRIEFING:
         st.info("**📍 STEP 1: Pre-Brief with Noa**")
-    else:
+    elif is_phase_completed(SimulationPhase.PRE_BRIEFING):
         st.success("✅ Pre-Brief Complete")
+    else:
+        st.info("⏳ Pre-Brief Pending")
 
 with col_flow2:
     if st.session_state.simulation_phase == SimulationPhase.MAIN_SIMULATION:
         st.info("**📍 STEP 2: Simulation with Sam**")
-    elif st.session_state.phase_completed[SimulationPhase.MAIN_SIMULATION]:
+    elif is_phase_completed(SimulationPhase.MAIN_SIMULATION):
         st.success("✅ Simulation Complete")
     else:
         st.info("⏳ Simulation Pending")
@@ -315,7 +332,7 @@ with col_flow2:
 with col_flow3:
     if st.session_state.simulation_phase == SimulationPhase.DEBRIEFING:
         st.info("**📍 STEP 3: Debrief with Noa**")
-    elif st.session_state.phase_completed[SimulationPhase.DEBRIEFING]:
+    elif is_phase_completed(SimulationPhase.DEBRIEFING):
         st.success("✅ Debrief Complete")
     else:
         st.info("⏳ Debrief Pending")
