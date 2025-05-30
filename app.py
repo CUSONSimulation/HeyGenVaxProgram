@@ -58,7 +58,6 @@ AVATARS = {
     "noa": {
         "name": "Noa Sandoval",
         "avatar_id": "June_HR_public",
-        "voice_id": "en-US-JennyNeural",
         "knowledge_base_id": "96b0ed06f07640459bcac16439103895",
         "role": "Virtual Simulation Instructor",
         "description": "Handles pre-briefing and debriefing"
@@ -66,7 +65,6 @@ AVATARS = {
     "sam": {
         "name": "Sam Richards",
         "avatar_id": "Shawn_Therapist_public",
-        "voice_id": "en-US-GuyNeural",
         "knowledge_base_id": "15a0063f43ed4d1c92f5a269dc0b8f9b",
         "role": "Simulation Character",
         "description": "Patient in the Flu Vaccination Program simulation"
@@ -126,7 +124,7 @@ def create_streaming_token(api_key):
         return None
 
 # Create HeyGen session with knowledge base
-def create_streaming_session(api_key, avatar_id, voice_id, knowledge_base_id=None):
+def create_streaming_session(api_key, avatar_id, knowledge_base_id=None):
     """Create a new streaming session with HeyGen"""
     # First create a token
     token = create_streaming_token(api_key)
@@ -140,10 +138,7 @@ def create_streaming_session(api_key, avatar_id, voice_id, knowledge_base_id=Non
     }
     data = {
         "quality": "high",
-        "avatar_name": avatar_id,
-        "voice": {
-            "voice_id": voice_id
-        }
+        "avatar_name": avatar_id
     }
     
     # Add knowledge base if provided
@@ -461,7 +456,6 @@ with col1:
                         session_data = create_streaming_session(
                             api_key, 
                             avatar_info['avatar_id'],
-                            avatar_info['voice_id'],
                             avatar_info['knowledge_base_id']
                         )
                         if session_data:
