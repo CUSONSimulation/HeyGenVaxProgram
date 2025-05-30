@@ -32,11 +32,11 @@ class SimulationPhase(Enum):
     MAIN_SIMULATION = "main_simulation"
     DEBRIEFING = "debriefing"
 
-# Phase names mapping - MOVED TO GLOBAL SCOPE
+# Phase names mapping - Using string values for reliability
 phase_names = {
-    SimulationPhase.PRE_BRIEFING: "Pre-Briefing (Noa)",
-    SimulationPhase.MAIN_SIMULATION: "Main Simulation (Sam)",
-    SimulationPhase.DEBRIEFING: "Debriefing (Noa)"
+    "pre_briefing": "Pre-Briefing (Noa)",
+    "main_simulation": "Main Simulation (Sam)",
+    "debriefing": "Debriefing (Noa)"
 }
 
 # Initialize session state
@@ -172,6 +172,13 @@ def switch_avatar(avatar_key):
     st.session_state.current_avatar = avatar_key
     st.session_state.session_id = None  # Reset session for new avatar
 
+# Helper function to get phase name
+def get_phase_name(phase):
+    """Get the display name for a phase"""
+    if isinstance(phase, SimulationPhase):
+        return phase_names.get(phase.value, "Unknown Phase")
+    return phase_names.get(str(phase), "Unknown Phase")
+
 # Sidebar configuration
 with st.sidebar:
     st.title("🏥 Simulation Control")
@@ -193,7 +200,7 @@ with st.sidebar:
     
     # Current phase display
     st.subheader("📍 Current Phase")
-    st.info(phase_names[st.session_state.simulation_phase])
+    st.info(get_phase_name(st.session_state.simulation_phase))
     
     # Current avatar info
     current_avatar_info = AVATARS[st.session_state.current_avatar]
@@ -267,9 +274,9 @@ with st.sidebar:
     st.subheader("📊 Progress")
     for phase, completed in st.session_state.phase_completed.items():
         if completed:
-            st.success(f"✅ {phase_names[phase]}")
+            st.success(f"✅ {get_phase_name(phase)}")
         else:
-            st.info(f"⏳ {phase_names[phase]}")
+            st.info(f"⏳ {get_phase_name(phase)}")
     
     st.divider()
     
