@@ -35,6 +35,8 @@ class SimulationPhase(Enum):
 # Initialize session state
 if 'session_id' not in st.session_state:
     st.session_state.session_id = None
+if 'session_data' not in st.session_state:
+    st.session_state.session_data = None
 if 'conversation_history' not in st.session_state:
     st.session_state.conversation_history = []
 if 'simulation_phase' not in st.session_state:
@@ -56,6 +58,7 @@ AVATARS = {
     "noa": {
         "name": "Noa Sandoval",
         "avatar_id": "June_HR_public",
+        "voice_id": "en-US-JennyNeural",
         "knowledge_base_id": "96b0ed06f07640459bcac16439103895",
         "role": "Virtual Simulation Instructor",
         "description": "Handles pre-briefing and debriefing"
@@ -63,6 +66,7 @@ AVATARS = {
     "sam": {
         "name": "Sam Richards",
         "avatar_id": "Shawn_Therapist_public",
+        "voice_id": "en-US-GuyNeural",
         "knowledge_base_id": "15a0063f43ed4d1c92f5a269dc0b8f9b",
         "role": "Simulation Character",
         "description": "Patient in the Flu Vaccination Program simulation"
@@ -101,17 +105,45 @@ def load_config():
     
     return config
 
-# Create HeyGen session with knowledge base
-def create_streaming_session(api_key, avatar_id, knowledge_base_id=None):
-    """Create a new streaming session with HeyGen"""
-    url = "https://api.heygen.com/v1/streaming.new"
+# Create streaming token from API key
+def create_streaming_token(api_key):
+    """Create a streaming token from API key"""
+    url = "https://api.heygen.com/v1/streaming.create_token"
     headers = {
         "x-api-key": api_key,
         "Content-Type": "application/json"
     }
+    
+    try:
+        response = requests.post(url, headers=headers)
+        if response.status_code == 200:
+            return response.json().get('data', {}).get('token')
+        else:
+            st.error(f"Failed to create token: {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error creating token: {str(e)}")
+        return None
+
+# Create HeyGen session with knowledge base
+def create_streaming_session(api_key, avatar_id, voice_id, knowledge_base_id=None):
+    """Create a new streaming session with HeyGen"""
+    # First create a token
+    token = create_streaming_token(api_key)
+    if not token:
+        return None
+        
+    url = "https://api.heygen.com/v1/streaming.new"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
     data = {
-        "avatar_id": avatar_id,
-        "quality": "high"
+        "quality": "high",
+        "avatar_name": avatar_id,
+        "voice": {
+            "voice_id": voice_id
+        }
     }
     
     # Add knowledge base if provided
@@ -121,13 +153,64 @@ def create_streaming_session(api_key, avatar_id, knowledge_base_id=None):
     try:
         response = requests.post(url, headers=headers, json=data)
         if response.status_code == 200:
-            return response.json()
+            result = response.json().get('data', {})
+            result['token'] = token  # Include token in response
+            return result
         else:
             st.error(f"Failed to create session: {response.text}")
             return None
     except Exception as e:
         st.error(f"Error creating session: {str(e)}")
         return None
+
+# Send text to avatar to speak
+def speak_to_avatar(api_key, session_id, text, emotion="neutral"):
+    """Send text to avatar to speak"""
+    token = create_streaming_token(api_key)
+    if not token:
+        return False
+        
+    url = "https://api.heygen.com/v1/streaming.task"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "session_id": session_id,
+        "text": text,
+        "task_type": "talk",
+        "task_mode": "sync"
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        return response.status_code == 200
+    except Exception as e:
+        st.error(f"Error speaking: {str(e)}")
+        return False
+
+# Stop avatar session
+def stop_avatar_session(api_key, session_id):
+    """Stop the avatar streaming session"""
+    token = create_streaming_token(api_key)
+    if not token:
+        return False
+        
+    url = "https://api.heygen.com/v1/streaming.stop"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "session_id": session_id
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        return response.status_code == 200
+    except Exception as e:
+        st.error(f"Error stopping session: {str(e)}")
+        return False
 
 # Phase-specific scripts
 def get_phase_scripts(phase):
@@ -173,8 +256,13 @@ def get_phase_scripts(phase):
 # Switch avatar based on phase
 def switch_avatar(avatar_key):
     """Switch to a different avatar"""
+    # Stop current session if exists
+    if st.session_state.session_id and 'api_key' in st.session_state:
+        stop_avatar_session(st.session_state.api_key, st.session_state.session_id)
+    
     st.session_state.current_avatar = avatar_key
-    st.session_state.session_id = None  # Reset session for new avatar
+    st.session_state.session_id = None
+    st.session_state.session_data = None
 
 # Get phase completion status
 def is_phase_completed(phase):
@@ -207,6 +295,10 @@ with st.sidebar:
                                value='', 
                                type="password",
                                help="Your HeyGen API key (or add to Streamlit secrets)")
+    
+    # Store API key in session state for use in other functions
+    if api_key:
+        st.session_state.api_key = api_key
     
     st.divider()
     
@@ -299,10 +391,15 @@ with st.sidebar:
     st.divider()
     
     if st.button("🔄 Reset Simulation", use_container_width=True):
+        # Stop current session if exists
+        if st.session_state.session_id and api_key:
+            stop_avatar_session(api_key, st.session_state.session_id)
+        
         st.session_state.conversation_history = []
         st.session_state.simulation_phase = SimulationPhase.PRE_BRIEFING
         st.session_state.simulation_started = False
         st.session_state.session_id = None
+        st.session_state.session_data = None
         st.session_state.current_avatar = "noa"
         st.session_state.phase_completed = {
             "pre_briefing": False,
@@ -364,10 +461,12 @@ with col1:
                         session_data = create_streaming_session(
                             api_key, 
                             avatar_info['avatar_id'],
+                            avatar_info['voice_id'],
                             avatar_info['knowledge_base_id']
                         )
                         if session_data:
                             st.session_state.session_id = session_data.get('session_id')
+                            st.session_state.session_data = session_data
                             st.session_state.simulation_started = True
                             
                             # Automatically start with Noa's introduction
@@ -389,9 +488,11 @@ with col1:
                 html_file = Path("avatar_component.html").read_text()
                 
                 # Replace placeholders with actual values
+                session_data = st.session_state.session_data or {}
                 html_content = html_file.replace("{{SESSION_ID}}", st.session_state.session_id or "")
-                html_content = html_content.replace("{{API_KEY}}", api_key)
-                html_content = html_content.replace("{{KNOWLEDGE_BASE_ID}}", avatar_info['knowledge_base_id'])
+                html_content = html_content.replace("{{TOKEN}}", session_data.get('token', ''))
+                html_content = html_content.replace("{{ACCESS_TOKEN}}", session_data.get('access_token', ''))
+                html_content = html_content.replace("{{URL}}", session_data.get('url', ''))
                 
                 # Display the avatar component
                 components.html(html_content, height=600)
@@ -409,13 +510,37 @@ with col1:
             col_a, col_b, col_c = st.columns(3)
             with col_a:
                 if st.button("📋 Introduction"):
-                    st.session_state.pending_script = phase_scripts[0]
+                    if speak_to_avatar(api_key, st.session_state.session_id, phase_scripts[0]['text']):
+                        st.session_state.conversation_history.append({
+                            "role": "avatar",
+                            "content": phase_scripts[0]['text'],
+                            "emotion": phase_scripts[0].get('emotion', 'neutral'),
+                            "timestamp": datetime.now().isoformat(),
+                            "avatar": st.session_state.current_avatar
+                        })
+                        st.rerun()
             with col_b:
                 if st.button("🎯 Objectives"):
-                    st.session_state.pending_script = phase_scripts[1]
+                    if speak_to_avatar(api_key, st.session_state.session_id, phase_scripts[1]['text']):
+                        st.session_state.conversation_history.append({
+                            "role": "avatar",
+                            "content": phase_scripts[1]['text'],
+                            "emotion": phase_scripts[1].get('emotion', 'neutral'),
+                            "timestamp": datetime.now().isoformat(),
+                            "avatar": st.session_state.current_avatar
+                        })
+                        st.rerun()
             with col_c:
                 if st.button("✅ Ready Check"):
-                    st.session_state.pending_script = phase_scripts[2]
+                    if speak_to_avatar(api_key, st.session_state.session_id, phase_scripts[2]['text']):
+                        st.session_state.conversation_history.append({
+                            "role": "avatar",
+                            "content": phase_scripts[2]['text'],
+                            "emotion": phase_scripts[2].get('emotion', 'neutral'),
+                            "timestamp": datetime.now().isoformat(),
+                            "avatar": st.session_state.current_avatar
+                        })
+                        st.rerun()
         
         elif st.session_state.simulation_phase == SimulationPhase.MAIN_SIMULATION:
             st.write("**Simulation Controls:**")
@@ -432,19 +557,44 @@ with col1:
                 })
                 # In a real implementation, this would trigger Sam's response
                 # based on the knowledge base
+                st.rerun()
         
         elif st.session_state.simulation_phase == SimulationPhase.DEBRIEFING:
             st.write("**Debriefing Controls:**")
             col_a, col_b, col_c = st.columns(3)
             with col_a:
                 if st.button("👋 Welcome Back"):
-                    st.session_state.pending_script = phase_scripts[0]
+                    if speak_to_avatar(api_key, st.session_state.session_id, phase_scripts[0]['text']):
+                        st.session_state.conversation_history.append({
+                            "role": "avatar",
+                            "content": phase_scripts[0]['text'],
+                            "emotion": phase_scripts[0].get('emotion', 'neutral'),
+                            "timestamp": datetime.now().isoformat(),
+                            "avatar": st.session_state.current_avatar
+                        })
+                        st.rerun()
             with col_b:
                 if st.button("📊 Performance Review"):
-                    st.session_state.pending_script = phase_scripts[1]
+                    if speak_to_avatar(api_key, st.session_state.session_id, phase_scripts[1]['text']):
+                        st.session_state.conversation_history.append({
+                            "role": "avatar",
+                            "content": phase_scripts[1]['text'],
+                            "emotion": phase_scripts[1].get('emotion', 'neutral'),
+                            "timestamp": datetime.now().isoformat(),
+                            "avatar": st.session_state.current_avatar
+                        })
+                        st.rerun()
             with col_c:
                 if st.button("📚 Key Takeaways"):
-                    st.session_state.pending_script = phase_scripts[2]
+                    if speak_to_avatar(api_key, st.session_state.session_id, phase_scripts[2]['text']):
+                        st.session_state.conversation_history.append({
+                            "role": "avatar",
+                            "content": phase_scripts[2]['text'],
+                            "emotion": phase_scripts[2].get('emotion', 'neutral'),
+                            "timestamp": datetime.now().isoformat(),
+                            "avatar": st.session_state.current_avatar
+                        })
+                        st.rerun()
 
 with col2:
     # Conversation history and notes
@@ -472,18 +622,11 @@ with col2:
         st.text_area("📝 Your notes:", height=550, key="user_notes",
                     placeholder="Take notes during the simulation...")
 
-# Script processing for avatar
+# Handle any pending scripts (for initial launch)
 if 'pending_script' in st.session_state and st.session_state.simulation_started:
-    # Add script to conversation history
     script = st.session_state.pending_script
-    st.session_state.conversation_history.append({
-        "role": "avatar",
-        "content": script['text'],
-        "emotion": script.get('emotion', 'neutral'),
-        "timestamp": datetime.now().isoformat(),
-        "avatar": st.session_state.current_avatar
-    })
     
-    # Clear pending script
-    del st.session_state.pending_script
-    st.rerun()
+    # Send to avatar
+    if speak_to_avatar(api_key, st.session_state.session_id, script['text']):
+        # Clear pending script only if successfully sent
+        del st.session_state.pending_script
