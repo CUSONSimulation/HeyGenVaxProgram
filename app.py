@@ -1,5 +1,5 @@
 """
-Columbia University School of Nursing Simulation - Flu Vaccination Program
+HeyGen Interactive Avatar Simulation - Flu Vaccination Program
 =============================================================
 This application implements a three-phase healthcare simulation with automatic flow:
 1. NOA SANDOVAL (Pre-briefing) - Virtual instructor introduces the simulation
@@ -31,6 +31,13 @@ class SimulationPhase(Enum):
     PRE_BRIEFING = "pre_briefing"
     MAIN_SIMULATION = "main_simulation"
     DEBRIEFING = "debriefing"
+
+# Phase names mapping - MOVED TO GLOBAL SCOPE
+phase_names = {
+    SimulationPhase.PRE_BRIEFING: "Pre-Briefing (Noa)",
+    SimulationPhase.MAIN_SIMULATION: "Main Simulation (Sam)",
+    SimulationPhase.DEBRIEFING: "Debriefing (Noa)"
+}
 
 # Initialize session state
 if 'session_id' not in st.session_state:
@@ -158,13 +165,6 @@ def get_phase_scripts(phase):
         ]
     }
     return scripts.get(phase, [])
-
-# Phase names mapping
-phase_names = {
-    SimulationPhase.PRE_BRIEFING: "Pre-Briefing (Noa)",
-    SimulationPhase.MAIN_SIMULATION: "Main Simulation (Sam)",
-    SimulationPhase.DEBRIEFING: "Debriefing (Noa)"
-}
 
 # Switch avatar based on phase
 def switch_avatar(avatar_key):
