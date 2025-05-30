@@ -36,11 +36,14 @@
             padding: 5px 10px;
             border-radius: 5px;
             font-size: 12px;
+            z-index: 10;
         }
         #loading {
             color: white;
             font-size: 18px;
             text-align: center;
+            position: absolute;
+            width: 100%;
         }
         #controls {
             margin-top: 10px;
@@ -54,6 +57,7 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 14px;
+            transition: opacity 0.3s;
         }
         .btn-primary {
             background-color: #4CAF50;
@@ -71,289 +75,495 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+        button:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+        .error-message {
+            color: #ff6b6b;
+            background-color: rgba(255, 107, 107, 0.1);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div id="avatar-container">
         <video id="avatar-video" autoplay playsinline></video>
         <div id="loading">Initializing avatar...</div>
-        <div id="status">Connecting...</div>
+        <div id="status">Ready to connect</div>
     </div>
     <div id="controls">
         <button id="connect-btn" class="btn-primary">Connect</button>
         <button id="disconnect-btn" class="btn-danger" disabled>Disconnect</button>
         <button id="mute-btn" class="btn-secondary" disabled>Mute</button>
     </div>
+    <div id="error-message" class="error-message"></div>
 
     <script type="module">
-        // Import the HeyGen SDK (you'll need to serve the built SDK)
-        // For now, we'll implement a minimal working version
-        
         // Configuration from Streamlit
         const SESSION_ID = '{{SESSION_ID}}';
-        const TOKEN = '{{TOKEN}}';  // Use token instead of API key
+        const TOKEN = '{{TOKEN}}';
         const ACCESS_TOKEN = '{{ACCESS_TOKEN}}';
         const URL = '{{URL}}';
         
+        // WebRTC and connection state
         let peerConnection = null;
         let localStream = null;
         let dataChannel = null;
+        let websocket = null;
         let isConnected = false;
         let checkInterval = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 3;
         
+        // DOM elements
         const videoElement = document.getElementById('avatar-video');
         const statusElement = document.getElementById('status');
         const loadingElement = document.getElementById('loading');
         const connectBtn = document.getElementById('connect-btn');
         const disconnectBtn = document.getElementById('disconnect-btn');
         const muteBtn = document.getElementById('mute-btn');
+        const errorElement = document.getElementById('error-message');
         
-        // Initialize connection using the session data
+        // Update status display
+        function updateStatus(message, isError = false) {
+            statusElement.textContent = message;
+            console.log('Status:', message);
+            
+            if (isError) {
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+            } else {
+                errorElement.style.display = 'none';
+            }
+        }
+        
+        // Show/hide loading
+        function setLoading(show) {
+            loadingElement.style.display = show ? 'block' : 'none';
+        }
+        
+        // Update button states
+        function updateButtonStates(connected) {
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            muteBtn.disabled = !connected;
+        }
+        
+        // Initialize WebRTC connection
         async function initializeConnection() {
             try {
-                updateStatus('Creating peer connection...');
+                // Validate required parameters
+                if (!SESSION_ID || !TOKEN || !ACCESS_TOKEN || !URL) {
+                    throw new Error('Missing required session parameters');
+                }
                 
-                const iceServers = [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun.heygen.com:3478' }
-                ];
+                updateStatus('Initializing connection...');
+                setLoading(true);
                 
-                peerConnection = new RTCPeerConnection({ iceServers });
-                
-                // Set up event handlers
-                peerConnection.ontrack = (event) => {
-                    console.log('Track received:', event.track.kind);
-                    if (event.streams && event.streams[0]) {
-                        videoElement.srcObject = event.streams[0];
-                        loadingElement.style.display = 'none';
-                    }
+                // Create RTCPeerConnection with proper config
+                const configuration = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' }
+                    ],
+                    iceCandidatePoolSize: 10
                 };
                 
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        console.log('ICE candidate:', event.candidate);
-                    }
-                };
+                peerConnection = new RTCPeerConnection(configuration);
                 
-                peerConnection.onconnectionstatechange = () => {
-                    updateStatus(`Connection: ${peerConnection.connectionState}`);
-                    if (peerConnection.connectionState === 'connected') {
-                        isConnected = true;
-                        connectBtn.disabled = true;
-                        disconnectBtn.disabled = false;
-                        muteBtn.disabled = false;
-                    }
-                };
+                // Set up RTCPeerConnection event handlers
+                peerConnection.onicecandidate = handleIceCandidate;
+                peerConnection.oniceconnectionstatechange = handleIceConnectionStateChange;
+                peerConnection.onconnectionstatechange = handleConnectionStateChange;
+                peerConnection.ontrack = handleTrackEvent;
                 
-                // Create data channel for communication
-                dataChannel = peerConnection.createDataChannel('heygen', {
+                // Create data channel for bidirectional communication
+                dataChannel = peerConnection.createDataChannel('heygen-data', {
                     ordered: true
                 });
                 
                 dataChannel.onopen = () => {
                     console.log('Data channel opened');
-                    startMessageCheck();
+                    updateStatus('Data channel ready');
+                };
+                
+                dataChannel.onclose = () => {
+                    console.log('Data channel closed');
                 };
                 
                 dataChannel.onmessage = (event) => {
-                    console.log('Data channel message:', event.data);
                     handleDataChannelMessage(event.data);
                 };
                 
-                // Start the session
-                await startSession();
+                dataChannel.onerror = (error) => {
+                    console.error('Data channel error:', error);
+                };
+                
+                // Set up local media stream (optional for audio input)
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            sampleRate: 16000
+                        },
+                        video: false
+                    });
+                    
+                    localStream.getTracks().forEach(track => {
+                        peerConnection.addTrack(track, localStream);
+                    });
+                } catch (err) {
+                    console.log('User media not available, continuing without microphone:', err);
+                }
+                
+                // Connect to HeyGen signaling
+                await connectToSignaling();
                 
             } catch (error) {
-                console.error('Connection error:', error);
-                updateStatus('Failed: ' + error.message);
-                loadingElement.textContent = 'Connection failed';
+                console.error('Connection initialization error:', error);
+                updateStatus('Failed to initialize: ' + error.message, true);
+                setLoading(false);
+                updateButtonStates(false);
             }
         }
         
-        // Start streaming session using WebSocket for signaling
-        async function startSession() {
+        // Connect to HeyGen signaling server
+        async function connectToSignaling() {
             try {
-                updateStatus('Starting session...');
+                updateStatus('Connecting to HeyGen...');
                 
-                // Connect to HeyGen WebSocket for signaling
-                const wsUrl = URL.replace('https://', 'wss://').replace('http://', 'ws://');
-                const ws = new WebSocket(wsUrl, [], {
-                    headers: {
-                        'Authorization': `Bearer ${ACCESS_TOKEN}`
-                    }
+                // Create offer
+                const offer = await peerConnection.createOffer({
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: true
                 });
+                await peerConnection.setLocalDescription(offer);
                 
-                ws.onopen = async () => {
-                    console.log('WebSocket connected');
-                    
-                    // Create and send offer
-                    const offer = await peerConnection.createOffer();
-                    await peerConnection.setLocalDescription(offer);
-                    
-                    ws.send(JSON.stringify({
-                        type: 'offer',
-                        sdp: offer.sdp,
-                        session_id: SESSION_ID
-                    }));
-                };
-                
-                ws.onmessage = async (event) => {
-                    const data = JSON.parse(event.data);
-                    
-                    if (data.type === 'answer') {
-                        const answer = new RTCSessionDescription({
-                            type: 'answer',
-                            sdp: data.sdp
-                        });
-                        await peerConnection.setRemoteDescription(answer);
-                        updateStatus('Connected to avatar');
-                    } else if (data.type === 'ice-candidate') {
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                    }
-                };
-                
-                ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    updateStatus('WebSocket error');
-                };
-                
-            } catch (error) {
-                console.error('Session error:', error);
-                updateStatus('Session failed: ' + error.message);
-            }
-        }
-        
-        // Send message through data channel
-        function sendMessage(message) {
-            if (dataChannel && dataChannel.readyState === 'open') {
-                dataChannel.send(JSON.stringify(message));
-            } else {
-                console.error('Data channel not ready');
-            }
-        }
-        
-        // Handle incoming data channel messages
-        function handleDataChannelMessage(data) {
-            try {
-                const message = JSON.parse(data);
-                console.log('Received message:', message);
-                
-                // Handle different message types
-                if (message.type === 'avatar_start_talking') {
-                    updateStatus('Avatar speaking...');
-                } else if (message.type === 'avatar_stop_talking') {
-                    updateStatus('Avatar ready');
-                }
-            } catch (e) {
-                console.error('Error handling message:', e);
-            }
-        }
-        
-        // Send text to avatar
-        function sendTextToAvatar(text, emotion = 'neutral') {
-            if (!isConnected) {
-                console.error('Not connected');
-                return;
-            }
-            
-            sendMessage({
-                type: 'speak',
-                text: text,
-                task_type: 'talk',
-                emotion: emotion
-            });
-        }
-        
-        // Check for pending messages from Streamlit
-        function startMessageCheck() {
-            checkInterval = setInterval(() => {
-                // This would integrate with Streamlit's component communication
-                if (window.parent && window.parent.streamlitPendingMessage) {
-                    const message = window.parent.streamlitPendingMessage;
-                    sendTextToAvatar(message.text, message.emotion);
-                    window.parent.streamlitPendingMessage = null;
-                }
-            }, 500);
-        }
-        
-        // Update status display
-        function updateStatus(message) {
-            statusElement.textContent = message;
-            console.log('Status:', message);
-        }
-        
-        // Disconnect
-        async function disconnect() {
-            try {
-                if (checkInterval) {
-                    clearInterval(checkInterval);
-                }
-                
-                if (dataChannel) {
-                    dataChannel.close();
-                }
-                
-                if (peerConnection) {
-                    peerConnection.close();
-                }
-                
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                }
-                
-                // Send stop request
-                await fetch('https://api.heygen.com/v1/streaming.stop', {
+                // Start streaming session
+                const response = await fetch('https://api.heygen.com/v1/streaming.start', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${TOKEN}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        session_id: SESSION_ID
+                        session_id: SESSION_ID,
+                        sdp: offer
                     })
                 });
                 
-                updateStatus('Disconnected');
-                isConnected = false;
-                connectBtn.disabled = false;
-                disconnectBtn.disabled = true;
-                muteBtn.disabled = true;
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to start streaming');
+                }
+                
+                const data = await response.json();
+                
+                if (data.data && data.data.sdp) {
+                    // Set remote description
+                    const answer = new RTCSessionDescription({
+                        type: 'answer',
+                        sdp: data.data.sdp
+                    });
+                    await peerConnection.setRemoteDescription(answer);
+                    
+                    updateStatus('Connected to HeyGen');
+                    isConnected = true;
+                    updateButtonStates(true);
+                    
+                    // Start checking for messages
+                    startMessageCheck();
+                    
+                    // Handle any ICE candidates from the response
+                    if (data.data.ice_candidates) {
+                        for (const candidate of data.data.ice_candidates) {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                        }
+                    }
+                } else {
+                    throw new Error('Invalid response from server');
+                }
                 
             } catch (error) {
-                console.error('Disconnect error:', error);
+                console.error('Signaling error:', error);
+                updateStatus('Connection failed: ' + error.message, true);
+                
+                // Attempt reconnection if under limit
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    updateStatus(`Reconnecting... (Attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+                    setTimeout(() => connectToSignaling(), 2000);
+                } else {
+                    setLoading(false);
+                    updateButtonStates(false);
+                }
             }
         }
         
-        // Button handlers
-        connectBtn.addEventListener('click', initializeConnection);
-        disconnectBtn.addEventListener('click', disconnect);
-        muteBtn.addEventListener('click', () => {
+        // Handle ICE candidates
+        async function handleIceCandidate(event) {
+            if (event.candidate && isConnected) {
+                try {
+                    // Send ICE candidate to HeyGen
+                    await fetch('https://api.heygen.com/v1/streaming.ice', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${TOKEN}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            session_id: SESSION_ID,
+                            candidate: event.candidate
+                        })
+                    });
+                } catch (error) {
+                    console.error('Error sending ICE candidate:', error);
+                }
+            }
+        }
+        
+        // Handle ICE connection state changes
+        function handleIceConnectionStateChange() {
+            console.log('ICE connection state:', peerConnection.iceConnectionState);
+            
+            switch (peerConnection.iceConnectionState) {
+                case 'connected':
+                case 'completed':
+                    updateStatus('Connection established');
+                    setLoading(false);
+                    reconnectAttempts = 0;
+                    break;
+                case 'failed':
+                    updateStatus('Connection failed', true);
+                    handleConnectionFailure();
+                    break;
+                case 'disconnected':
+                    updateStatus('Connection lost');
+                    break;
+            }
+        }
+        
+        // Handle connection state changes
+        function handleConnectionStateChange() {
+            console.log('Connection state:', peerConnection.connectionState);
+            updateStatus(`Connection: ${peerConnection.connectionState}`);
+        }
+        
+        // Handle incoming media tracks
+        function handleTrackEvent(event) {
+            console.log('Track received:', event.track.kind);
+            
+            if (event.track.kind === 'video') {
+                videoElement.srcObject = event.streams[0];
+                setLoading(false);
+                updateStatus('Video stream active');
+            }
+        }
+        
+        // Handle data channel messages
+        function handleDataChannelMessage(data) {
+            try {
+                const message = JSON.parse(data);
+                console.log('Data channel message:', message);
+                
+                // Handle different message types from avatar
+                switch (message.type) {
+                    case 'avatar_start_talking':
+                        updateStatus('Avatar speaking...');
+                        break;
+                    case 'avatar_stop_talking':
+                        updateStatus('Avatar ready');
+                        break;
+                    case 'error':
+                        updateStatus('Avatar error: ' + message.message, true);
+                        break;
+                    default:
+                        console.log('Unknown message type:', message.type);
+                }
+            } catch (e) {
+                console.error('Error parsing message:', e);
+            }
+        }
+        
+        // Send message through data channel
+        function sendDataChannelMessage(message) {
+            if (dataChannel && dataChannel.readyState === 'open') {
+                dataChannel.send(JSON.stringify(message));
+                return true;
+            } else {
+                console.error('Data channel not ready');
+                return false;
+            }
+        }
+        
+        // Send text to avatar
+        function sendTextToAvatar(text, emotion = 'neutral') {
+            if (!isConnected) {
+                console.error('Not connected to avatar');
+                return false;
+            }
+            
+            const message = {
+                type: 'speak',
+                text: text,
+                emotion: emotion,
+                task_type: 'talk'
+            };
+            
+            return sendDataChannelMessage(message);
+        }
+        
+        // Check for messages from Streamlit
+        function startMessageCheck() {
+            checkInterval = setInterval(() => {
+                // Check if Streamlit has set a pending message
+                if (window.parent && window.parent.streamlitPendingMessage) {
+                    const message = window.parent.streamlitPendingMessage;
+                    if (sendTextToAvatar(message.text, message.emotion)) {
+                        window.parent.streamlitPendingMessage = null;
+                    }
+                }
+            }, 100);
+        }
+        
+        // Handle connection failure
+        function handleConnectionFailure() {
+            setLoading(false);
+            updateButtonStates(false);
+            isConnected = false;
+            
+            if (checkInterval) {
+                clearInterval(checkInterval);
+                checkInterval = null;
+            }
+        }
+        
+        // Disconnect from avatar
+        async function disconnect() {
+            try {
+                updateStatus('Disconnecting...');
+                
+                // Stop checking for messages
+                if (checkInterval) {
+                    clearInterval(checkInterval);
+                    checkInterval = null;
+                }
+                
+                // Close data channel
+                if (dataChannel) {
+                    dataChannel.close();
+                    dataChannel = null;
+                }
+                
+                // Close peer connection
+                if (peerConnection) {
+                    peerConnection.close();
+                    peerConnection = null;
+                }
+                
+                // Stop local stream
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+                
+                // Clear video
+                videoElement.srcObject = null;
+                
+                // Send stop request to HeyGen
+                if (isConnected && SESSION_ID && TOKEN) {
+                    await fetch('https://api.heygen.com/v1/streaming.stop', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${TOKEN}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            session_id: SESSION_ID
+                        })
+                    });
+                }
+                
+                updateStatus('Disconnected');
+                isConnected = false;
+                updateButtonStates(false);
+                setLoading(false);
+                
+            } catch (error) {
+                console.error('Disconnect error:', error);
+                updateStatus('Error during disconnect', true);
+            }
+        }
+        
+        // Toggle mute
+        function toggleMute() {
             if (localStream) {
                 const audioTrack = localStream.getAudioTracks()[0];
                 if (audioTrack) {
                     audioTrack.enabled = !audioTrack.enabled;
                     muteBtn.textContent = audioTrack.enabled ? 'Mute' : 'Unmute';
+                    updateStatus(audioTrack.enabled ? 'Microphone on' : 'Microphone muted');
+                }
+            }
+        }
+        
+        // Button event handlers
+        connectBtn.addEventListener('click', () => {
+            reconnectAttempts = 0;
+            initializeConnection();
+        });
+        
+        disconnectBtn.addEventListener('click', disconnect);
+        muteBtn.addEventListener('click', toggleMute);
+        
+        // Handle window messages from Streamlit
+        window.addEventListener('message', (event) => {
+            if (event.data) {
+                if (event.data.type === 'SEND_TO_AVATAR') {
+                    sendTextToAvatar(event.data.text, event.data.emotion);
+                } else if (event.data.type === 'DISCONNECT') {
+                    disconnect();
                 }
             }
         });
         
-        // Auto-connect if session data is available
-        if (SESSION_ID && TOKEN && ACCESS_TOKEN && URL) {
-            setTimeout(initializeConnection, 1000);
-        } else {
-            updateStatus('Missing session data');
-            loadingElement.textContent = 'Session not initialized';
-        }
-        
-        // Handle Streamlit communication
-        window.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'SEND_TO_AVATAR') {
-                sendTextToAvatar(event.data.text, event.data.emotion);
+        // Auto-connect on load if session data is available
+        window.addEventListener('load', () => {
+            if (SESSION_ID && TOKEN && ACCESS_TOKEN && URL) {
+                console.log('Session data available, auto-connecting...');
+                setTimeout(() => {
+                    initializeConnection();
+                }, 1000);
+            } else {
+                updateStatus('Waiting for session data', true);
+                setLoading(false);
+                console.error('Missing session data:', {
+                    SESSION_ID: !!SESSION_ID,
+                    TOKEN: !!TOKEN,
+                    ACCESS_TOKEN: !!ACCESS_TOKEN,
+                    URL: !!URL
+                });
             }
         });
         
-        // Cleanup
-        window.addEventListener('beforeunload', disconnect);
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (isConnected) {
+                disconnect();
+            }
+        });
+        
+        // Handle visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && isConnected) {
+                console.log('Page hidden, maintaining connection...');
+            }
+        });
     </script>
 </body>
 </html>
