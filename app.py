@@ -111,10 +111,7 @@ def create_streaming_session(api_key, avatar_id, knowledge_base_id=None):
     }
     data = {
         "avatar_id": avatar_id,
-        "quality": "high",
-        "voice": {
-            "voice_id": "default"
-        }
+        "quality": "high"
     }
     
     # Add knowledge base if provided
