@@ -22,11 +22,6 @@
     "session_timeout_minutes": 45
   },
   "streaming_config": {
-    "quality": "high",
-    "voice_settings": {
-      "voice_id": "default",
-      "speed": 1.0,
-      "pitch": 1.0
-    }
+    "quality": "high"
   }
 }
