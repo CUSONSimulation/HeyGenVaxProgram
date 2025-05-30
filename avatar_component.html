@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HeyGen Interactive Avatar</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f6;
+        }
+        #avatar-container {
+            width: 100%;
+            height: 500px;
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #avatar-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        #controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #f44336;
+            color: white;
+        }
+        #loading {
+            color: white;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div id="avatar-container">
+        <video id="avatar-video" autoplay playsinline></video>
+        <div id="loading">Initializing avatar...</div>
+        <div id="status">Connecting...</div>
+    </div>
+    <div id="controls">
+        <button id="connect-btn" class="btn-primary">Connect</button>
+        <button id="disconnect-btn" class="btn-danger">Disconnect</button>
+        <button id="mute-btn" class="btn-primary">Mute</button>
+    </div>
+
+    <script>
+        // Configuration from Streamlit
+        const SESSION_ID = '{{SESSION_ID}}';
+        const API_KEY = '{{API_KEY}}';
+        const KNOWLEDGE_BASE_ID = '{{KNOWLEDGE_BASE_ID}}';
+        
+        let peerConnection = null;
+        let localStream = null;
+        let remoteStream = null;
+        let isConnected = false;
+        let checkInterval = null;
+        
+        const videoElement = document.getElementById('avatar-video');
+        const statusElement = document.getElementById('status');
+        const loadingElement = document.getElementById('loading');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const muteBtn = document.getElementById('mute-btn');
+        
+        // Initialize WebRTC connection
+        async function initializeConnection() {
+            try {
+                updateStatus('Initializing connection...');
+                loadingElement.style.display = 'block';
+                
+                // Create peer connection
+                const configuration = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                };
+                
+                peerConnection = new RTCPeerConnection(configuration);
+                
+                // Set up event handlers
+                peerConnection.onicecandidate = handleIceCandidate;
+                peerConnection.ontrack = handleTrackEvent;
+                peerConnection.onconnectionstatechange = handleConnectionStateChange;
+                
+                // Get user media (optional - for two-way communication)
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: true, 
+                        video: false 
+                    });
+                    
+                    localStream.getTracks().forEach(track => {
+                        peerConnection.addTrack(track, localStream);
+                    });
+                } catch (err) {
+                    console.log('User media not available:', err);
+                }
+                
+                // Start the connection
+                await startStreaming();
+                
+            } catch (error) {
+                console.error('Connection error:', error);
+                updateStatus('Connection failed: ' + error.message);
+            }
+        }
+        
+        // Start streaming session
+        async function startStreaming() {
+            try {
+                const response = await fetch('https://api.heygen.com/v1/streaming.start', {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': API_KEY,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        session_id: SESSION_ID,
+                        sdp: {
+                            type: 'offer',
+                            sdp: await createOffer()
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to start streaming');
+                }
+                
+                const data = await response.json();
+                await handleAnswer(data.sdp);
+                
+                updateStatus('Connected');
+                isConnected = true;
+                loadingElement.style.display = 'none';
+                
+                // Start checking for messages
+                startMessageCheck();
+                
+            } catch (error) {
+                console.error('Streaming error:', error);
+                updateStatus('Streaming failed: ' + error.message);
+            }
+        }
+        
+        // Create WebRTC offer
+        async function createOffer() {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            return offer.sdp;
+        }
+        
+        // Handle WebRTC answer
+        async function handleAnswer(answerSdp) {
+            const answer = new RTCSessionDescription({
+                type: 'answer',
+                sdp: answerSdp
+            });
+            await peerConnection.setRemoteDescription(answer);
+        }
+        
+        // Handle ICE candidates
+        function handleIceCandidate(event) {
+            if (event.candidate) {
+                // Send ICE candidate to HeyGen
+                fetch('https://api.heygen.com/v1/streaming.ice', {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': API_KEY,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        session_id: SESSION_ID,
+                        candidate: event.candidate
+                    })
+                });
+            }
+        }
+        
+        // Handle incoming media tracks
+        function handleTrackEvent(event) {
+            if (event.streams && event.streams[0]) {
+                remoteStream = event.streams[0];
+                videoElement.srcObject = remoteStream;
+            }
+        }
+        
+        // Handle connection state changes
+        function handleConnectionStateChange() {
+            updateStatus('Connection: ' + peerConnection.connectionState);
+        }
+        
+        // Send text to avatar
+        async function sendTextToAvatar(text, emotion = 'neutral') {
+            if (!isConnected) {
+                console.error('Not connected to avatar');
+                return;
+            }
+            
+            try {
+                const response = await fetch('https://api.heygen.com/v1/streaming.task', {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': API_KEY,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        session_id: SESSION_ID,
+                        text: text,
+                        task_type: 'talk',
+                        emotion: emotion
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to send text to avatar');
+                }
+                
+            } catch (error) {
+                console.error('Error sending text:', error);
+            }
+        }
+        
+        // Check for pending messages from Streamlit
+        function startMessageCheck() {
+            checkInterval = setInterval(() => {
+                // Check if Streamlit has set a pending message
+                if (window.parent && window.parent.streamlitPendingMessage) {
+                    const message = window.parent.streamlitPendingMessage;
+                    sendTextToAvatar(message.text, message.emotion);
+                    window.parent.streamlitPendingMessage = null;
+                }
+            }, 500);
+        }
+        
+        // Update status display
+        function updateStatus(message) {
+            statusElement.textContent = message;
+            console.log('Status:', message);
+        }
+        
+        // Disconnect from avatar
+        async function disconnect() {
+            try {
+                if (checkInterval) {
+                    clearInterval(checkInterval);
+                }
+                
+                if (peerConnection) {
+                    peerConnection.close();
+                }
+                
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Stop streaming session
+                await fetch('https://api.heygen.com/v1/streaming.stop', {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': API_KEY,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        session_id: SESSION_ID
+                    })
+                });
+                
+                updateStatus('Disconnected');
+                isConnected = false;
+                
+            } catch (error) {
+                console.error('Disconnect error:', error);
+            }
+        }
+        
+        // Button event listeners
+        connectBtn.addEventListener('click', initializeConnection);
+        disconnectBtn.addEventListener('click', disconnect);
+        muteBtn.addEventListener('click', () => {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                    muteBtn.textContent = audioTrack.enabled ? 'Mute' : 'Unmute';
+                }
+            }
+        });
+        
+        // Auto-connect on load
+        if (SESSION_ID && API_KEY) {
+            setTimeout(initializeConnection, 1000);
+        }
+        
+        // Handle window communication with Streamlit
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'SEND_TO_AVATAR') {
+                sendTextToAvatar(event.data.text, event.data.emotion);
+            }
+        });
+        
+        // Clean up on unload
+        window.addEventListener('beforeunload', disconnect);
+    </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "heygen_api_key": "YOUR_HEYGEN_API_KEY_HERE",
+  "avatars": {
+    "noa": {
+      "avatar_id": "June_HR_public",
+      "knowledge_base_id": "96b0ed06f07640459bcac16439103895",
+      "name": "Noa Sandoval",
+      "role": "Virtual Simulation Instructor"
+    },
+    "sam": {
+      "avatar_id": "Shawn_Therapist_public",
+      "knowledge_base_id": "15a0063f43ed4d1c92f5a269dc0b8f9b",
+      "name": "Sam Richards",
+      "role": "Simulation Patient"
+    }
+  },
+  "simulation_settings": {
+    "title": "Flu Vaccination Program",
+    "description": "Healthcare communication training for addressing vaccine hesitancy",
+    "phases": ["pre_briefing", "main_simulation", "debriefing"],
+    "default_emotion": "friendly",
+    "session_timeout_minutes": 45
+  },
+  "streaming_config": {
+    "quality": "high",
+    "voice_settings": {
+      "voice_id": "default",
+      "speed": 1.0,
+      "pitch": 1.0
+    }
+  }
+}

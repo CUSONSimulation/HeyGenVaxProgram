@@ -1,0 +1,145 @@
+{
+  "simulation": {
+    "title": "Implementing Flu Vaccination Program",
+    "description": "A healthcare communication simulation focused on addressing patient concerns about flu vaccination",
+    "learning_objectives": [
+      "Practice empathetic communication with vaccine-hesitant patients",
+      "Provide evidence-based information about flu vaccines",
+      "Address common misconceptions and concerns",
+      "Build trust and rapport with patients"
+    ]
+  },
+  "noa_scripts": {
+    "pre_briefing": {
+      "introduction": {
+        "text": "Hello! I'm Noa Sandoval, your virtual simulation instructor. Welcome to the Flu Vaccination Program simulation. Today, you'll be practicing your communication skills with a patient who has concerns about getting the flu vaccine.",
+        "emotion": "friendly",
+        "duration": 15
+      },
+      "objectives": {
+        "text": "Your objectives for this simulation are: First, to establish rapport with Sam Richards, our patient. Second, to identify and address their specific concerns about the flu vaccine. Third, to provide accurate, evidence-based information. And fourth, to guide them toward an informed decision about vaccination. Remember, the goal isn't to force compliance, but to ensure the patient can make an informed choice.",
+        "emotion": "professional",
+        "duration": 20
+      },
+      "scenario_setup": {
+        "text": "Here's the scenario: Sam Richards is a 45-year-old office worker who received a reminder letter about getting their annual flu shot. They've scheduled this appointment but have some reservations. Sam has heard various things about vaccines from friends and social media and wants to discuss these concerns before making a decision. Your role is to be their healthcare provider.",
+        "emotion": "informative",
+        "duration": 18
+      },
+      "communication_tips": {
+        "text": "Before we begin, here are some key communication tips: Use active listening - let Sam fully express their concerns before responding. Show empathy - acknowledge that their concerns are valid and understandable. Provide clear, factual information without being condescending. Use simple language and avoid medical jargon. And remember to check for understanding throughout the conversation.",
+        "emotion": "encouraging",
+        "duration": 20
+      },
+      "ready_check": {
+        "text": "Are you ready to begin? Remember, this is a safe learning environment. Take your time, and focus on building trust with Sam. When you're ready, I'll connect you with Sam Richards for your consultation. Good luck!",
+        "emotion": "supportive",
+        "duration": 12
+      }
+    },
+    "debriefing": {
+      "welcome_back": {
+        "text": "Welcome back! I'm Noa again. How did that go? Let's take a moment to reflect on your interaction with Sam Richards. These simulations can feel quite real, so it's important to debrief and discuss what happened.",
+        "emotion": "warm",
+        "duration": 12
+      },
+      "performance_strengths": {
+        "text": "Let's start with what you did well. From what I observed, you demonstrated good active listening skills when Sam expressed their concerns. You maintained a professional yet empathetic demeanor throughout the conversation. You also provided evidence-based information without being pushy or dismissive of their concerns. These are all crucial skills in healthcare communication.",
+        "emotion": "encouraging",
+        "duration": 18
+      },
+      "areas_for_improvement": {
+        "text": "Now, let's consider areas for growth. In future interactions, you might want to ask more open-ended questions to better understand the patient's specific concerns. Also, consider using the 'teach-back' method - asking the patient to explain what they understood to ensure clear communication. Remember, every patient interaction is unique, and flexibility in your approach is key.",
+        "emotion": "constructive",
+        "duration": 18
+      },
+      "key_takeaways": {
+        "text": "Here are the key takeaways from today's simulation: First, addressing vaccine hesitancy requires patience and empathy. Second, providing information is important, but building trust is essential. Third, respect patient autonomy - your role is to inform, not coerce. And finally, always leave the door open for future conversations. Not every patient will decide immediately, and that's okay.",
+        "emotion": "professional",
+        "duration": 20
+      },
+      "closing": {
+        "text": "Excellent work today! Healthcare communication is a skill that improves with practice. I encourage you to reflect on this experience and think about how you might apply these skills in real-world situations. Thank you for participating in this simulation. If you'd like to practice again with different scenarios, we have more simulations available. Have a great day!",
+        "emotion": "warm",
+        "duration": 18
+      }
+    }
+  },
+  "sam_scripts": {
+    "initial_greeting": {
+      "text": "Hi there. I'm Sam Richards. I got this letter about getting a flu shot, and I made this appointment, but honestly, I'm having second thoughts. I've been reading a lot online, and I'm not sure if I really need it. I mean, I'm pretty healthy, and I've heard the flu shot can actually make you sick. What do you think?",
+      "emotion": "uncertain",
+      "triggers": ["hello", "hi", "good morning", "start"],
+      "follow_up_options": ["concerns", "effectiveness", "side_effects"]
+    },
+    "vaccine_concerns": {
+      "text": "Well, my main worry is about what's in these vaccines. I've seen posts on social media saying they contain harmful chemicals and mercury. Plus, my friend got the flu shot last year and still got sick. It makes me wonder if it's even worth it. And I hate needles, to be honest. The whole thing just makes me nervous.",
+      "emotion": "worried",
+      "triggers": ["concerns", "worries", "what concerns", "tell me more"],
+      "follow_up_options": ["ingredients", "effectiveness", "needle_phobia"]
+    },
+    "about_ingredients": {
+      "text": "That's exactly what I'm talking about - I read that vaccines have formaldehyde and mercury in them. How can that be safe? I try to eat organic and avoid chemicals in my food, so why would I inject them into my body? Can you explain what's actually in the flu shot?",
+      "emotion": "skeptical",
+      "triggers": ["ingredients", "chemicals", "mercury", "what's in it"],
+      "follow_up_options": ["safety", "natural_immunity"]
+    },
+    "effectiveness_doubts": {
+      "text": "But how effective is it really? My coworker told me the flu shot is only like 40% effective some years. If I'm going to go through all this trouble and risk side effects, shouldn't it at least work most of the time? And I've heard you need to get it every year - that seems excessive.",
+      "emotion": "doubtful",
+      "triggers": ["effective", "does it work", "success rate", "percentage"],
+      "follow_up_options": ["annual_shots", "side_effects"]
+    },
+    "side_effect_fears": {
+      "text": "What about side effects? I'm worried about feeling sick afterward. I can't afford to miss work, and I have a big presentation coming up. I've heard people say they got flu-like symptoms from the shot itself. Is that true? What if I have a bad reaction?",
+      "emotion": "anxious",
+      "triggers": ["side effects", "reactions", "feel sick", "symptoms"],
+      "follow_up_options": ["mild_effects", "serious_reactions"]
+    },
+    "natural_immunity": {
+      "text": "I've been thinking - wouldn't it be better to just build natural immunity? I mean, I'm young and healthy. I exercise regularly and eat well. Shouldn't my immune system be strong enough to handle the flu on its own? It seems like we're over-medicating everything these days.",
+      "emotion": "confident",
+      "triggers": ["natural", "immune system", "healthy", "don't need"],
+      "follow_up_options": ["risk_factors", "community_protection"]
+    },
+    "considering_decision": {
+      "text": "Hmm, I hadn't thought about it that way. You're giving me a lot to think about. I guess I always just focused on my own health and didn't consider how it might affect others, especially my elderly neighbor who I help with groceries. But I still need to think about this. Can I take some information home with me?",
+      "emotion": "thoughtful",
+      "triggers": ["interesting", "didn't know", "need to think", "maybe"],
+      "follow_up_options": ["resources", "follow_up"]
+    },
+    "positive_response": {
+      "text": "You know what? You've addressed a lot of my concerns, and I appreciate you taking the time to explain everything clearly. I think I understand better now why it's recommended. I'm still a bit nervous about the needle, but I think I'm ready to go ahead with it. What happens next?",
+      "emotion": "resolved",
+      "triggers": ["okay", "convinced", "I'll do it", "yes", "ready"],
+      "follow_up_options": ["next_steps", "preparation"]
+    },
+    "needs_more_time": {
+      "text": "I really appreciate all this information, but I'm not quite ready to decide today. This is a lot to process, and I'd like to discuss it with my family first. Can I come back another time, or maybe call if I have more questions? I want to make sure I'm making the right decision.",
+      "emotion": "uncertain",
+      "triggers": ["not sure", "need time", "think about it", "maybe later"],
+      "follow_up_options": ["follow_up", "resources"]
+    }
+  },
+  "response_guidelines": {
+    "empathy_phrases": [
+      "I understand your concerns",
+      "That's a valid question",
+      "Many people share these worries",
+      "It's good that you're asking these questions"
+    ],
+    "evidence_points": [
+      "CDC recommendations and data",
+      "Vaccine safety monitoring systems",
+      "Ingredients in safe quantities",
+      "Community immunity benefits",
+      "Risk vs. benefit analysis"
+    ],
+    "avoid_phrases": [
+      "You're wrong",
+      "That's just a myth",
+      "Everyone knows that",
+      "You have to get it"
+    ]
+  }
+}
