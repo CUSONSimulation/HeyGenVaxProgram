@@ -1,5 +1,5 @@
 """
-Columbia University School of Nursing - Flu Vaccination Program
+Columbia University School of Nursing Simulation - Flu Vaccination Program
 =============================================================
 This application implements a three-phase healthcare simulation with automatic flow:
 1. NOA SANDOVAL (Pre-briefing) - Virtual instructor introduces the simulation
